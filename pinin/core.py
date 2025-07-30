@@ -5,6 +5,7 @@ Core functionality for Indian pincode data lookup and management.
 import os
 import re
 from functools import lru_cache
+from typing import cast
 from typing import Dict, List, Optional, Union, Any
 import pandas as pd
 from difflib import get_close_matches
@@ -85,7 +86,77 @@ class PincodeData:
             ]
         
         return sorted(filtered_data['taluk'].dropna().unique().tolist()) if not filtered_data.empty else []
+    
+    def get_unique_offices_by_state(self, state_name: str) -> List[str]:
+        """
+        Get all unique post office names for a given state.
 
+        Args:
+            state_name: State name to filter offices.
+
+        Returns:
+            Sorted list of unique post office names.
+        """
+        if self.data is None:
+            raise DataLoadError("Data not loaded")
+
+        filtered_data = self.data[
+            self.data['statename'].str.upper() == state_name.upper()
+        ]
+
+        return sorted(filtered_data['officename'].unique().tolist()) if not filtered_data.empty else []
+    
+    def get_office_types_by_state(self, state_name: str) -> List[str]:
+        """
+        Get all unique office types for a given state.
+
+        Args:
+            state_name: State name to filter office types.
+
+        Returns:
+            Sorted list of unique office types.
+        """
+        if self.data is None:
+            raise DataLoadError("Data not loaded")
+
+        filtered_data = self.data[
+            self.data['statename'].str.upper() == state_name.upper()
+        ]
+
+        return sorted(filtered_data['officetype'].unique().tolist()) if not filtered_data.empty else []
+
+        
+    def get_unique_office_types(self) -> List[str]:
+        """
+        Get list of all unique postal office types.
+
+        Returns:
+            Sorted list of unique office types.
+        """
+        if self.data is None:
+            raise DataLoadError("Data not loaded")
+        
+        return sorted(self.data['officetype'].dropna().unique().tolist())
+
+
+    def get_unique_delivery_statuses(self) -> List[str]:
+        """
+        Get list of all unique delivery statuses.
+
+        Returns:
+            Sorted list of unique delivery statuses.
+        """
+        if self.data is None:
+            raise DataLoadError("Data not loaded")
+        
+        return sorted(self.data['Deliverystatus'].dropna().unique().tolist())
+    
+    def get_unique_pincodes_count_by_state(self) -> Dict[str, int]:
+        if self.data is None:
+            raise DataLoadError("Data not loaded")
+        
+        result = self.data.groupby('statename')['pincode'].nunique().sort_values(ascending=False).to_dict()
+        return cast(Dict[str, int], result)
 
     
     def _load_data(self) -> None:
@@ -447,7 +518,40 @@ class PincodeData:
             'unique_offices': self.data['officename'].nunique() if not self.data.empty else 0,
         }
     
-   
+
+
+        # ----------------------------------------------------------
+    # NEW: Summary helper method for a given pincode
+    #
+    # This method provides a quick summary of:
+    # - Total number of post offices under a pincode
+    # - Distribution of office types (e.g., H.O, S.O, B.O)
+    # - Distribution of delivery statuses (e.g., Delivery, Non-Delivery)
+    #
+    # Useful for analytics, visualizations, and high-level insights.
+    # ----------------------------------------------------------
+
+
+    def get_postoffice_summary(self, pincode: Union[str, int]) -> Dict[str, Any]:
+        if self.data is None:
+            raise DataLoadError("Data not loaded")
+
+        pincode_str = self._validate_pincode(pincode)
+        filtered_data = self._get_matching_rows(pincode_str)
+
+        if filtered_data.empty:
+            raise DataNotFoundError(pincode_str)
+
+        total = len(filtered_data)
+        types = filtered_data['officetype'].value_counts().to_dict()
+        delivery = filtered_data['Deliverystatus'].value_counts().to_dict()
+
+        return {
+            "total": total,
+            "types": types,
+            "delivery_statuses": delivery
+        }
+    
     @staticmethod
     def _normalize(text: str) -> str:
         """
@@ -483,6 +587,8 @@ class PincodeData:
         ]
         
         return result
+    
+    
 
     def suggest_districts(self, query: str, state_name: Optional[str] = None, n: int = 5, cutoff: float = 0.6) -> List[str]:
         districts = self.get_districts(state_name)
@@ -516,6 +622,7 @@ class PincodeData:
 def _get_default_instance() -> PincodeData:
     """Get or create the default PincodeData instance."""
     return PincodeData()
+    
 
 
 # Convenience functions
@@ -620,6 +727,20 @@ def get_states() -> List[str]:
     """
     return _get_default_instance().get_states()
 
+def get_unique_office_types() -> List[str]:
+    """Convenience function to get all unique office types."""
+    return _get_default_instance().get_unique_office_types()
+
+
+def get_unique_delivery_statuses() -> List[str]:
+    """Convenience function to get all unique delivery statuses."""
+    return _get_default_instance().get_unique_delivery_statuses()
+
+def get_unique_pincodes_count_by_state() -> Dict[str, int]:
+    """Convenience function to get unique pincodes count by state."""
+    return _get_default_instance().get_unique_pincodes_count_by_state()
+
+
 
 def get_districts(state_name: Optional[str] = None) -> List[str]:
     """
@@ -632,3 +753,20 @@ def get_districts(state_name: Optional[str] = None) -> List[str]:
         List of district names
     """
     return _get_default_instance().get_districts(state_name)
+
+
+
+
+
+def get_postoffice_summary(pincode: Union[str, int]) -> Dict[str, Any]:
+    # """
+    # Convenience function to get post office summary for a pincode.
+
+    # Args:
+    #     pincode: The pincode to summarize
+
+    # Returns:
+    #     Dictionary with summary statistics
+    # """
+    return _get_default_instance().get_postoffice_summary(pincode)
+
